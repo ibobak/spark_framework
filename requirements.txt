@@ -1,0 +1,5 @@
+numpy
+pandas
+scipy
+psycopg2
+pgcopy
