@@ -11,7 +11,7 @@ import re
 import psycopg2
 from pgcopy import CopyManager
 
-from pyspark.sql.session import DataFrame
+from pyspark.sql.dataframe import DataFrame
 from pyspark.sql.session import SparkSession
 from pyspark.sql.types import StringType, Row, StructField, StructType, TimestampType, ByteType, ShortType, \
     IntegerType, LongType, FloatType, DoubleType
@@ -32,6 +32,7 @@ _spark: Union[SparkSession, None] = None
 
 
 def init(a_spark: SparkSession):
+    global _spark
     _spark = a_spark
 
 # endregion
@@ -57,7 +58,8 @@ C_PARQUET = "parquet"
 C_AVRO = "avro"
 C_DELTA = "delta"
 C_GZIP_CODEC = "org.apache.hadoop.io.compress.GzipCodec"
-C_FORMAT_MAP = {C_CSV_GZ: "csv", C_AVRO: "com.databricks.spark.avro"}  # mapping between format name and spark.read.format(VALUE)
+# mapping between format name and spark.read.format(VALUE)
+C_FORMAT_MAP = {C_CSV_GZ: "csv", C_AVRO: "com.databricks.spark.avro"}
 
 # Supported formats for reading/writing to file systems.
 # If you change this value, make sure that you've done the changes in the load_df and save_df to create the appropriate readers
@@ -69,7 +71,8 @@ C_DATABASE = "database"
 C_DBNAME = "dbname"
 C_PORT = "port"
 C_DRIVER = "driver"
-C_PG_URL_PARSER = re.compile(r"jdbc:postgresql://([a-zA-Z0-9.-]+)(:(\d+))(/([a-zA-Z0-9.-]+)).*")  # parsing PostgreSQL connection string
+# parsing PostgreSQL connection string
+C_PG_URL_PARSER = re.compile(r"jdbc:postgresql://([a-zA-Z0-9.-]+)(:(\d+))(/([a-zA-Z0-9.-]+)).*")
 
 C_TEST_PASSED = "unit test passed"
 C_TEST_FAILURE = "Execution terminated due to unit test failure: "
@@ -1189,6 +1192,7 @@ def join(a_df1, a_df2, a_how="inner", a_join_cols=None, a_drop_cols1=None, a_dro
     print_verbose(3, a_verbose_level, query)
     result = _spark.sql(query)
 
+    new_cnt = -1
     if a_cache:
         print_verbose(1, a_verbose_level, "caching joined dataset")
         cache(result)
