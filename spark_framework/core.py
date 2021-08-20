@@ -114,12 +114,16 @@ def join_path_char(a_join_char, *a_parts):
     return "".join(result)
 
 
-def join_path_generic(*a_parts):
-    return join_path_char("/", *a_parts)
+def join_path_generic(a_prefix, a_list_or_string: Union[list, str]):
+    if isinstance(a_list_or_string, str):
+        return join_path_char("/", a_prefix, a_list_or_string)
+    return [join_path_char("/", a_prefix, item) for item in a_list_or_string]
 
 
-def join_path_os(*a_parts):
-    return join_path_char(os.sep, *a_parts)
+def join_path_os(a_prefix, a_list_or_string: Union[list, str]):
+    if isinstance(a_list_or_string, str):
+        return join_path_char(os.sep, a_prefix, a_list_or_string)
+    return [join_path_char(os.sep, a_prefix, item) for item in a_list_or_string]
 
 
 def date_to_ymd_hms(a_date):
@@ -201,8 +205,8 @@ def get_fs_reader(a_format, a_header, a_schema, a_verbose_level=3, **a_options):
             raise ValueError(f"For formats {C_CSV_GZ} and {C_CSV} you need to set a_header=True/False explicitly")
     else:
         # for non-csv format there should be no header or schema
-        if isinstance(a_header, bool) or a_schema:
-            raise ValueError(f"You should not set a_header and/or a_schema for {a_format} format")
+        if isinstance(a_header, bool):
+            raise ValueError(f"You should not set a_header for {a_format} format")
 
     # construct the result
     fmt = C_FORMAT_MAP.get(a_format, a_format)
@@ -761,6 +765,16 @@ def distinct_values(a_df: DataFrame, a_column, a_order=False, a_verbose_level=3)
     return [r[a_column] for r in rows]
 
 
+def min_value(a_df: DataFrame, a_column: str):
+    pdf1 = sql(f"select min({a_column}) as {a_column} from [0]", a_df, a_verbose_level=5).toPandas()
+    return pdf1[a_column].iloc[0]
+
+
+def max_value(a_df: DataFrame, a_column: str):
+    pdf1 = sql(f"select max({a_column}) as {a_column} from [0]", a_df, a_verbose_level=5).toPandas()
+    return pdf1[a_column].iloc[0]
+
+
 def collect_values(a_df: DataFrame, a_column, a_order=False, a_verbose_level=3):
     rows = change(a_df, a_select=[a_column]).collect()
     return [r[a_column] for r in rows]
@@ -802,10 +816,16 @@ def groupby_sum(a_df: DataFrame, a_group_columns: ListOrStr, a_sum_columns: List
     if isinstance(a_sum_columns, str):
         a_sum_columns = [a_sum_columns]
     table_name = temp_table(a_df)
-    group_cols = comma_columns(a_group_columns)
+    group_cols = comma_columns(a_group_columns) if a_group_columns else None
     sum_cols = ", ".join(f"SUM({x}) as SUM_{x}" for x in a_sum_columns)
-    order_query = f" order by {group_cols}" if a_order else ""
-    query = f"select {group_cols}, {sum_cols} from {table_name} group by {group_cols}" + order_query
+    order_query = f" order by {group_cols}" if a_order and group_cols else ""
+    query = f"select "
+    if group_cols:
+        query += " {group_cols}, "
+    query += f"{sum_cols} from {table_name} "
+    if group_cols:
+        query += f" group by {group_cols}"
+    query += order_query
     return sql(query, a_verbose_level=a_verbose_level)
 
 
@@ -860,7 +880,7 @@ def show(a_df: DataFrame, a_limit=100, a_t=False, a_row_count=False, a_verbose_l
         pdf = pdf.T
     display_pdf(pdf)
 
-BAD_SYMBOLS = '% ,()&-'
+BAD_SYMBOLS = '% ,()&-$#.'
 HIVE_KEYWORDS_SET = {"ALL", "ALTER", "AND", "ARRAY", "AS", "AUTHORIZATION", "BETWEEN", "BIGINT", "BINARY", "BOOLEAN", "BOTH",
                      "BY", "CASE", "CAST", "CHAR", "COLUMN", "CONF", "CREATE", "CROSS", "CUBE", "CURRENT", "CURRENT_DATE", "CURRENT_TIMESTAMP",
                      "CURSOR", "DATABASE", "DATE", "DECIMAL", "DELETE", "DESCRIBE", "DISTINCT", "DOUBLE", "DROP", "ELSE", "END", "EXCHANGE",
@@ -875,7 +895,7 @@ HIVE_KEYWORDS_SET = {"ALL", "ALTER", "AND", "ARRAY", "AS", "AUTHORIZATION", "BET
                      "FLOOR", "INTEGER", "PRECISION", "VIEWS"}
 
 
-def safe_col_name(a_column):
+def safe_col_name_simple(a_column):
     if a_column.startswith('`') and a_column.endswith('`'):
         return a_column
     if a_column.upper() in HIVE_KEYWORDS_SET:
@@ -884,6 +904,14 @@ def safe_col_name(a_column):
         if c in a_column:
             return f"`{a_column}`"
     return a_column
+
+
+def safe_col_name(a_col_name):
+    if "." in a_col_name:
+        parts = a_col_name.split(".")
+        return ".".join(safe_col_name_simple(part) for part in parts)
+    else:
+        return safe_col_name_simple(a_col_name)
 
 
 def comma_columns(a_fields, a_prefix="", a_separator=", "):
@@ -899,7 +927,7 @@ def get_change_query(a_input_table, a_input_cols,
     """Generates a query for quick changin of the dataframe
 
     :param a_input_table: name of the main table
-    :param a_input_cols: list of columns
+    :param a_input_cols: list of columns - passed as converted to safe
     :param a_drop:  list of columns to drop, e.g. ["column1", "column2"]
     :param a_replace:  must contain replacement expressions, e.e.  {"a": "log(a)"} - will give us "select log(a) as a"
     :param a_rename: {"a": "renamed_a", "b": "renamed_b"}}, so that it will make "select a as renamed_a"
@@ -1063,10 +1091,11 @@ def change(a_df: DataFrame, a_select=None, a_drop=None, a_replace=None, a_rename
     print_verbose(1, a_verbose_level, "changing dataframe, operations: " + ", ".join(operations))
 
     # check if a_select and a_select_end are all in dataframe, if not - raise exception
-    if a_select:
-        missing = missing_columns(a_select, a_df)
-        if missing:
-            raise ValueError(f"Bad a_select value: columns {missing} are missing in the dataframe. Full list of columns: {a_df.columns}")
+    # TODO:  think on what to do with columns that are structures with properties, e.g. event_properties.sceneId
+    # if a_select:
+    #     missing = missing_columns(a_select, a_df)
+    #     if missing:
+    #         raise ValueError(f"Bad a_select value: columns {missing} are missing in the dataframe. Full list of columns: {a_df.columns}")
 
     input_table = temp_table(a_df, a_prefix="df")
     filter_table = temp_table(a_filter_df, a_prefix="df_filter") if a_filter_df else None
@@ -1221,7 +1250,7 @@ def join(a_df1, a_df2, a_how="inner", a_join_cols=None, a_drop_cols1=None, a_dro
     return result
 
 
-def union_all(a_df_list: list, a_columns: list=None, a_verbose_level=3):
+def union(a_df_list: list, a_columns: list=None, a_verbose_level=3, a_type=""):
     schema_types = None
 
     # check if everything is all right with the schemas: the datatypes must be the same
@@ -1231,12 +1260,17 @@ def union_all(a_df_list: list, a_columns: list=None, a_verbose_level=3):
         else:
             schema_types2 = [str(f.dataType) for f in df.schema.fields if a_columns is None or f.name in a_columns]
             if schema_types2 != schema_types:
-                raise ValueError(f"Schema of the {i}th dataframe is different. Expected: {schema_types}, actual: {schema_types2}")
+                raise ValueError(f"Schema of the {i+1}th dataframe is different. Expected: {schema_types}, actual: {schema_types2}")
 
     cols = "*" if not a_columns else ", ".join(a_columns)
     temp_tables = [temp_table(df) for df in a_df_list]
-    query = "\nunion all\n".join([f"select {cols} from {t}" for t in temp_tables])
+
+    query = f"\nunion {a_type}\n".join([f"select {cols} from {t}" for t in temp_tables])
     return sql(query, a_verbose_level=a_verbose_level)
+
+
+def union_all(a_df_list: list, a_columns: list=None, a_verbose_level=3):
+    return union(a_df_list, a_columns, a_verbose_level, a_type="all")
 
 
 def moving_average(a_df, a_group_col, a_value_col, a_sort_col, a_moving_avg_col, a_window, a_min_periods=1, a_return_all_columns=True):
@@ -1500,7 +1534,11 @@ def statistics(a_df,
     return df_result
 
 
-def get_schema_columns(a_df, a_columns):
+def get_schema_columns(a_df, a_columns=None):
+    if a_columns is None:
+        a_columns = a_df.columns
+    elif isinstance(a_columns, str):
+        a_columns = [a_columns]
     schema_dict = {c.name: c for c in a_df.schema}
     result = []
     for gc in a_columns:
@@ -1509,6 +1547,18 @@ def get_schema_columns(a_df, a_columns):
         result.append(schema_dict[gc])
     return result
 
+def get_schema_columns_string(a_df, a_columns=None):
+    if a_columns is None:
+        a_columns = a_df.columns
+    elif isinstance(a_columns, str):
+        a_columns = [a_columns]
+    schema_dict = {c.name: c for c in a_df.schema}
+    result = []
+    for gc in a_columns:
+        if gc not in schema_dict:
+            raise ValueError(f"Column {gc} is not found in the schema")
+        result.append(schema_dict[gc].name + " " + str(schema_dict[gc].dataType).lower()[:-4])
+    return ", ".join(result)
 
 def correlation(a_df: DataFrame, a_group_columns, a_column1, a_column2, a_corr_column, a_type="spearman"):
     known_corr_types = ["spearman", "pearson"]
@@ -1585,7 +1635,7 @@ def show_values(a_df, a_pdf_dc=None, a_limit=10):
 
 # region Unit test routines
 
-def ut_missing_key(a_stop, a_df_main, a_df_lookup, a_column_main, a_column_lookup=None, a_show=False, a_limit=100, a_verbose_level=3):
+def ut_missing_key(a_stop, a_df_main, a_df_lookup, a_column_main, a_column_lookup=None, a_show=False, a_limit=100, a_verbose_level=3, a_return_df=False):
     if not a_column_lookup:
         a_column_lookup = a_column_main
     print_verbose(1, a_verbose_level, f"unit test: checking if values for {a_column_main} in main datafrare are missing in values {a_column_lookup} of the lookup")
@@ -1614,9 +1664,13 @@ def ut_missing_key(a_stop, a_df_main, a_df_lookup, a_column_main, a_column_looku
             show(df_bad, a_limit=a_limit, a_verbose_level=a_verbose_level)
         if a_stop:
             raise Exception(C_TEST_FAILURE + err)
+        if a_return_df:
+            return True, df_bad
         return False
     else:
         print_verbose(1, a_verbose_level, C_TEST_PASSED)
+        if a_return_df:
+            return True, None
         return True
 
 
@@ -1646,7 +1700,9 @@ def ut_check_duplicates(a_stop, a_df, a_columns, a_show=False, a_limit=100, a_ve
         return True
 
 
-def ut_check_dependent_columns(a_stop, a_df, a_parent_columns, a_children_columns, a_show=False, a_limit=100, a_verbose_level=3, a_return_bad_df=False):
+def ut_check_dependent_columns(a_stop, a_df, a_parent_columns, a_children_columns, a_show=False, a_limit=10,
+                               a_verbose_level=3, a_return_bad_df=False,
+                               a_show_hist=False):
     if isinstance(a_children_columns, str):
         a_children_columns = [a_children_columns]
     if isinstance(a_parent_columns, str):
@@ -1656,7 +1712,7 @@ def ut_check_dependent_columns(a_stop, a_df, a_parent_columns, a_children_column
     print_verbose(1, a_verbose_level, f"unit test: checking for relationship [{parent_cols}] -> [{children_cols}]")
 
     table_name = temp_table(a_df)
-    df_bad_rows = sql(f"select {parent_cols}, count(distinct {children_cols}) as RC from {table_name} group by {parent_cols} having RC > 1", a_verbose_level=a_verbose_level)
+    df_bad_rows = sql(f"select {parent_cols}, count(distinct {children_cols}) as RC from {table_name} group by {parent_cols} having RC > 1 order by RC desc", a_verbose_level=a_verbose_level)
     cnt = df_bad_rows.count()
     if cnt > 0:
         err = f"found {cnt:,} rows with non-working relationship [{parent_cols}] -> [{children_cols}]"
@@ -1664,6 +1720,10 @@ def ut_check_dependent_columns(a_stop, a_df, a_parent_columns, a_children_column
         print_verbose(1, a_verbose_level, err + str_add)
         if a_show:
             show(df_bad_rows, a_limit=a_limit, a_verbose_level=a_verbose_level)
+        if a_show_hist:
+            pdf_hist = groupby_count(change(df_bad_rows, a_rename={"RC": "row_count"}),
+                                     "row_count").toPandas().sort_values("row_count")
+            pdf_hist.plot.bar(x="row_count", y="RC")
         if a_stop:
             raise Exception(C_TEST_FAILURE + err)
         if a_return_bad_df:

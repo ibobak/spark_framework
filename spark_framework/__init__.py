@@ -1,3 +1,5 @@
+__version__ = "1.17"
+
 # initialization
 from spark_framework.core import init
 
@@ -6,8 +8,9 @@ from spark_framework.core import load, save
 
 # Other Dataframe routines
 from spark_framework.core import ps, cache, unpersist, uncache_all, temp_table, sql, distinct, distinct_values, \
-    collect_values, count, groupby_count, groupby_sum, groupby, show, change, join, union_all,\
-    moving_average, exp_moving_average, median, calc_stat_local, statistics, correlation
+    collect_values, count, groupby_count, groupby_sum, groupby, show, change, join, union_all, union,\
+    moving_average, exp_moving_average, median, calc_stat_local, statistics, correlation, safe_col_name, \
+    min_value, max_value, get_schema_columns_string, get_schema_columns
 
 # Data Investigation routines
 from spark_framework.core import get_dc, show_values
