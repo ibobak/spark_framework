@@ -397,7 +397,7 @@ def pg_make_copy_to_func(a_columns, a_string_fields, a_dest_table, **a_pg_conn_p
         mgr = CopyManager(conn, a_dest_table, a_columns)
         # this is done to speed up the process: in the case if there are no string fields, we don't have to
         # perform a check "if this is a string field then encode it" - iterator will work faster
-        if len(a_string_fields) >= 0:
+        if len(a_string_fields) > 0:
             mgr.copy(tuple(r[c].encode('utf-8') if c in a_string_fields and r[c] else r[c] for c in a_columns) for r in a_rows)
         else:
             mgr.copy(tuple(r[c] for c in a_columns) for r in a_rows)
@@ -780,6 +780,8 @@ def collect_values(a_df: DataFrame, a_column, a_order=False, a_verbose_level=3):
     return [r[a_column] for r in rows]
 
 def count(a_df: DataFrame, a_cache=False, a_verbose_level=3):
+    if not isinstance(a_cache, bool):
+        raise ValueError("a_cache parameter must be bool")
     if a_cache:
         cache(a_df)
     cnt = a_df.count()
@@ -959,9 +961,9 @@ def get_change_query(a_input_table, a_input_cols,
         a_order_by = {}
 
     if a_filter_table and (not isinstance(a_filter_columns, list) or len(a_filter_columns) == 0):
-        raise Exception("when a_filter_table is not None, a_filter_columns should be a list")
+        raise ValueError("when a_filter_table is not None, a_filter_columns should be a list")
     if a_filter_not_table and (not isinstance(a_filter_not_columns, list) or len(a_filter_not_columns) == 0):
-        raise Exception("when a_filter_not_table is not None, a_filter_not_columns should be some list")
+        raise ValueError("when a_filter_not_table is not None, a_filter_not_columns should be some list")
 
         # initial list (not a dict - to preserve order)
     cols = [(c, c) for c in a_input_cols]

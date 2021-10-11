@@ -8,7 +8,7 @@ with open("requirements.txt") as f:
 
 setup(
     name="spark_framework",
-    version="1.17",
+    version="1.18",
     description="collection of useful functions to make your PySpark code more convenient and robust",
     long_description=long_description,
     long_description_content_type="text/markdown",
