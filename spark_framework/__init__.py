@@ -1,4 +1,4 @@
-__version__ = "1.18"
+__version__ = "1.22"
 
 # initialization
 from spark_framework.core import init

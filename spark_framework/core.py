@@ -3,7 +3,7 @@ import sys
 
 import numpy as np
 import pandas as pd
-from scipy.stats import skew, kurtosis, spearmanr, pearsonr
+from scipy.stats import skew as scipy_skew, kurtosis as scipy_kurtosis, spearmanr, pearsonr
 
 from datetime import datetime
 import re
@@ -1377,9 +1377,11 @@ def check_if_statistics_are_correct(a_stats):
 def calc_stat_local(a_pdf,
                     stats, quantiles,
                     a_column_prefix_map, a_group_columns,
-                    a_return_uppercase=False, a_reset_index=True
+                    a_return_uppercase=False, a_reset_index=True, a_round_to_decimal_places=-1
                     ):
-    # region indicators of which statistics to calculate; theywill go as closures to the stat_func()
+    # region indicators of which statistics to calculate; they will go as closures to the stat_func()
+    if isinstance(a_group_columns, str):
+        a_group_columns = [a_group_columns]
     calc_count = "count" in stats
     calc_ms = "mean_minus_1std" in stats or "mean_minus_2std" in stats or "mean_minus_3std" in stats \
               or "mean_plus_1std" in stats or "mean_plus_2std" in stats or "mean_plus_3std" in stats
@@ -1410,14 +1412,14 @@ def calc_stat_local(a_pdf,
         f.__name__ = "count"
         return f
 
-    def min_func():  # the function name will be amin, need to fix
+    def min_func():
         def f(x):
             return np.min(x)
 
         f.__name__ = "min"
         return f
 
-    def max_func():  # the function name will be amax, need to fix
+    def max_func():
         def f(x):
             return np.max(x)
 
@@ -1431,11 +1433,21 @@ def calc_stat_local(a_pdf,
         f.__name__ = "q" + f"{a_q:.2f}"[2:]
         return f
 
+    def std(a):
+        return np.std(a)
+
+
+    def skew(a):
+        return scipy_skew(a)
+
+    def kurtosis(a):
+        return scipy_kurtosis(a)
+
     agg_funcs = []
     if calc_mean:
         agg_funcs.append(np.mean)
     if calc_std:
-        agg_funcs.append(np.std)
+        agg_funcs.append(std)
     if calc_sum:
         agg_funcs.append(np.sum)
     if calc_count:
@@ -1480,14 +1492,20 @@ def calc_stat_local(a_pdf,
             pdf_res["q25_minus_15iqr"] = pdf_res["q25"] - 1.5 * (pdf_res["q75"] - pdf_res["q25"])
             pdf_res["q75_plus_15iqr"] = pdf_res["q75"] + 1.5 * (pdf_res["q75"] - pdf_res["q25"])
 
-        # keep just statistics + quantiles that we requested (but do not take those which server basis for others)
+        # keep just statistics + quantiles that we requested (but do not take those which served as basis for others)
         pdf_res = pdf_res[get_cols]
+
+        if a_round_to_decimal_places >= 0:
+            for c in get_cols:
+                pdf_res[c] = np.around(pdf_res[c].values, a_round_to_decimal_places)
+
         # rename columns - append the prefix
         pdf_res.columns = [p + c for c in pdf_res.columns]
 
         pdf_res_all = pdf_res if pdf_res_all is None else pd.merge(pdf_res_all, pdf_res, left_index=True, right_index=True)
-        if a_return_uppercase:
-            pdf_res_all.columns = [c.upper() for c in pdf_res_all.columns]
+
+    if a_return_uppercase:
+        pdf_res_all.columns = [c.upper() for c in pdf_res_all.columns]
 
     if a_reset_index:
         return pdf_res_all.reset_index()  # groupping columns will remain the same case
@@ -1500,7 +1518,7 @@ def statistics(a_df,
                 a_stats=None,
                 a_quantiles=None,
                 a_return_schema=False,
-                a_split_group_columns=None, a_return_uppercase=False):
+                a_split_group_columns=None, a_return_uppercase=False, a_round_to_decimal_places=-1):
     # region check parameters
     if a_stats is None and a_quantiles is None:
         raise ValueError("Please, specify either a_stats or a_quantiles")
@@ -1524,7 +1542,8 @@ def statistics(a_df,
     # endregion
 
     def stat_func2(a_pdf):
-        return calc_stat_local(a_pdf, stats, quantiles, a_column_prefix_map, a_group_columns, a_return_uppercase)
+        return calc_stat_local(a_pdf, stats, quantiles, a_column_prefix_map, a_group_columns,
+                               a_return_uppercase=a_return_uppercase, a_reset_index=True, a_round_to_decimal_places=a_round_to_decimal_places)
 
     schema = StructType(output_cols)
 
@@ -1884,7 +1903,7 @@ def numpy_to_spark_type(c):
 def spark_schema_from_pdf(a_pdf):
     fields = []
     for c, t in zip(a_pdf.columns, a_pdf.dtypes):
-        fields.append(StructField(c, numpy_to_spark_type(t), False))
+        fields.append(StructField(c, numpy_to_spark_type(t), True))
     return StructType(fields)
 
 
