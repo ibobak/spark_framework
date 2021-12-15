@@ -57,13 +57,14 @@ C_CSV_GZ = "csv.gz"
 C_PARQUET = "parquet"
 C_AVRO = "avro"
 C_DELTA = "delta"
+C_JSON = "json"
 C_GZIP_CODEC = "org.apache.hadoop.io.compress.GzipCodec"
 # mapping between format name and spark.read.format(VALUE)
 C_FORMAT_MAP = {C_CSV_GZ: "csv", C_AVRO: "com.databricks.spark.avro"}
 
 # Supported formats for reading/writing to file systems.
 # If you change this value, make sure that you've done the changes in the load_df and save_df to create the appropriate readers
-C_FS_SUPPORTED_FORMATS = [C_CSV, C_CSV_GZ, C_PARQUET, C_AVRO, C_DELTA]
+C_FS_SUPPORTED_FORMATS = [C_CSV, C_CSV_GZ, C_PARQUET, C_AVRO, C_DELTA, C_JSON]
 
 # database connection parameters
 C_HOST = "host"
