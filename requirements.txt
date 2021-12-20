@@ -1,5 +1,3 @@
-# README!!!  sudo apt install libpq-dev !!!
-# TODO: it is necessary to somehow to pip install pgcopy --no-deps
 numpy
 pandas
 scipy
