@@ -1376,32 +1376,36 @@ def check_if_statistics_are_correct(a_stats):
 
 
 def calc_stat_local(a_pdf,
-                    stats, quantiles,
-                    a_column_prefix_map, a_group_columns,
-                    a_return_uppercase=False, a_reset_index=True, a_round_to_decimal_places=-1
+                    a_stats,
+                    a_quantiles,
+                    a_column_prefix_map,
+                    a_group_columns,
+                    a_return_uppercase=False,
+                    a_reset_index=True,
+                    a_round_to_decimal_places=-1
                     ):
     # region indicators of which statistics to calculate; they will go as closures to the stat_func()
     if isinstance(a_group_columns, str):
         a_group_columns = [a_group_columns]
-    calc_count = "count" in stats
-    calc_ms = "mean_minus_1std" in stats or "mean_minus_2std" in stats or "mean_minus_3std" in stats \
-              or "mean_plus_1std" in stats or "mean_plus_2std" in stats or "mean_plus_3std" in stats
-    calc_mean = "mean" in stats or calc_ms
-    calc_std = "std" in stats or calc_ms
-    calc_sum = "sum" in stats
-    calc_min = "min" in stats
-    calc_max = "max" in stats
-    calc_skew = "skew" in stats
-    calc_kurtosis = "kurtosis" in stats
-    calc_mean_minus_1std = "mean_minus_1std" in stats
-    calc_mean_minus_2std = "mean_minus_2std" in stats
-    calc_mean_minus_3std = "mean_minus_3std" in stats
-    calc_mean_plus_1std = "mean_plus_1std" in stats
-    calc_mean_plus_2std = "mean_plus_2std" in stats
-    calc_mean_plus_3std = "mean_plus_3std" in stats
-    calc_iqr = "q25_minus_15iqr" in stats or "q75_plus_15iqr" in stats
+    calc_count = "count" in a_stats
+    calc_ms = "mean_minus_1std" in a_stats or "mean_minus_2std" in a_stats or "mean_minus_3std" in a_stats \
+              or "mean_plus_1std" in a_stats or "mean_plus_2std" in a_stats or "mean_plus_3std" in a_stats
+    calc_mean = "mean" in a_stats or calc_ms
+    calc_std = "std" in a_stats or calc_ms
+    calc_sum = "sum" in a_stats
+    calc_min = "min" in a_stats
+    calc_max = "max" in a_stats
+    calc_skew = "skew" in a_stats
+    calc_kurtosis = "kurtosis" in a_stats
+    calc_mean_minus_1std = "mean_minus_1std" in a_stats
+    calc_mean_minus_2std = "mean_minus_2std" in a_stats
+    calc_mean_minus_3std = "mean_minus_3std" in a_stats
+    calc_mean_plus_1std = "mean_plus_1std" in a_stats
+    calc_mean_plus_2std = "mean_plus_2std" in a_stats
+    calc_mean_plus_3std = "mean_plus_3std" in a_stats
+    calc_iqr = "q25_minus_15iqr" in a_stats or "q75_plus_15iqr" in a_stats
     # in the case if IQR is requested, we need to appen 0.25 and 0.75 to the list of quantiles
-    calc_quantiles = quantiles if not calc_iqr else sorted(list(set(quantiles).union({0.25, 0.75})))
+    calc_quantiles = a_quantiles if not calc_iqr else sorted(list(set(a_quantiles).union({0.25, 0.75})))
 
     # endregion
 
@@ -1468,7 +1472,7 @@ def calc_stat_local(a_pdf,
     # endregion
 
     # the final list of columns to return
-    get_cols = stats + ["q" + f"{q:.2f}"[2:] for q in quantiles]
+    get_cols = a_stats + ["q" + f"{q:.2f}"[2:] for q in a_quantiles]
 
     pdf_res_all = None
     for c, p in a_column_prefix_map.items():
@@ -1482,11 +1486,11 @@ def calc_stat_local(a_pdf,
         if calc_mean_plus_1std:
             pdf_res["mean_plus_1std"] = pdf_res["mean"] + pdf_res["std"]
         if calc_mean_minus_2std:
-            pdf_res["mean_minus_2std"] = pdf_res["mean"] - 2 * pdf_res["std"],
+            pdf_res["mean_minus_2std"] = pdf_res["mean"] - 2 * pdf_res["std"]
         if calc_mean_plus_2std:
             pdf_res["mean_plus_2std"] = pdf_res["mean"] + 2 * pdf_res["std"]
         if calc_mean_minus_3std:
-            pdf_res["mean_minus_3std"] = pdf_res["mean"] - 3 * pdf_res["std"],
+            pdf_res["mean_minus_3std"] = pdf_res["mean"] - 3 * pdf_res["std"]
         if calc_mean_plus_3std:
             pdf_res["mean_plus_3std"] = pdf_res["mean"] + 3 * pdf_res["std"]
         if calc_iqr:
@@ -1497,8 +1501,8 @@ def calc_stat_local(a_pdf,
         pdf_res = pdf_res[get_cols]
 
         if a_round_to_decimal_places >= 0:
-            for c in get_cols:
-                pdf_res[c] = np.around(pdf_res[c].values, a_round_to_decimal_places)
+            for c2 in get_cols:
+                pdf_res[c2] = np.around(pdf_res[c2].values, a_round_to_decimal_places)
 
         # rename columns - append the prefix
         pdf_res.columns = [p + c for c in pdf_res.columns]
