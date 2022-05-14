@@ -58,13 +58,18 @@ C_PARQUET = "parquet"
 C_AVRO = "avro"
 C_DELTA = "delta"
 C_JSON = "json"
+C_JSON_GZ = "json.gz"
 C_GZIP_CODEC = "org.apache.hadoop.io.compress.GzipCodec"
 # mapping between format name and spark.read.format(VALUE)
-C_FORMAT_MAP = {C_CSV_GZ: "csv", C_AVRO: "com.databricks.spark.avro"}
+C_FORMAT_MAP = {
+    C_CSV_GZ: "csv",
+    C_JSON_GZ: "json",
+    C_AVRO: "com.databricks.spark.avro"
+}
 
 # Supported formats for reading/writing to file systems.
 # If you change this value, make sure that you've done the changes in the load_df and save_df to create the appropriate readers
-C_FS_SUPPORTED_FORMATS = [C_CSV, C_CSV_GZ, C_PARQUET, C_AVRO, C_DELTA, C_JSON]
+C_FS_SUPPORTED_FORMATS = [C_CSV, C_CSV_GZ, C_PARQUET, C_AVRO, C_DELTA, C_JSON, C_JSON_GZ]
 
 # database connection parameters
 C_HOST = "host"
@@ -203,7 +208,7 @@ def get_fs_reader(a_format, a_header, a_schema, a_verbose_level=3, **a_options):
         raise ValueError(f"a_format must be one of the following: {C_FS_SUPPORTED_FORMATS}")
     if a_format in [C_CSV_GZ, C_CSV]:
         if not isinstance(a_header, bool):
-            raise ValueError(f"For formats {C_CSV_GZ} and {C_CSV} you need to set a_header=True/False explicitly")
+            raise ValueError(f"For formats {C_CSV_GZ} or {C_CSV} you need to set a_header=True/False explicitly")
     else:
         # for non-csv format there should be no header or schema
         if isinstance(a_header, bool):
@@ -215,7 +220,7 @@ def get_fs_reader(a_format, a_header, a_schema, a_verbose_level=3, **a_options):
     print_verbose(4, a_verbose_level, f"format: {fmt}")
 
     # for csv.gz apply the codec
-    if a_format == C_CSV_GZ:
+    if a_format in {C_CSV_GZ, C_JSON_GZ}:
         print_verbose(4, a_verbose_level, f"option codec={C_GZIP_CODEC}")
         res = res.option("codec", C_GZIP_CODEC)
 
@@ -273,7 +278,9 @@ def get_jdbc_reader(a_table, a_query, a_table_options, a_url, a_verbose_level=3,
 
     return res
 
+
 stat_path = []
+
 
 def load(a_souce_conn_info: dict, a_table,
          a_format=None, a_header=None, a_schema=None,
@@ -339,7 +346,7 @@ def load(a_souce_conn_info: dict, a_table,
         print_verbose(1, a_verbose_level, f"loading dataframe from table {a_table} at {source_url}")
         result = get_jdbc_reader(a_table, a_query, a_table_options, source_url, a_verbose_level=a_verbose_level, **source_options).load()
     else:
-        raise NotImplemented(f"Type {source_type} is not implemented yet")
+        raise NotImplementedError(f"Type {source_type} is not implemented yet")
 
     if a_select or a_where or a_rename:
         result = change(result, a_where=a_where, a_select=a_select, a_rename=a_rename)
@@ -506,7 +513,7 @@ def get_fs_writer(a_df: DataFrame, a_format: str, a_header, a_overwrite, a_parti
         else:
             res = res.partitionBy(a_partition_by)
 
-    if a_format == C_CSV_GZ:
+    if a_format in {C_CSV_GZ, C_JSON_GZ}:
         print_verbose(4, a_verbose_level, f"option codec={C_GZIP_CODEC}")
         res = res.option("codec", C_GZIP_CODEC)
 
@@ -762,7 +769,7 @@ def distinct(a_df: DataFrame, a_columns, a_order=False, a_cache=False, a_row_cou
 
 
 def distinct_values(a_df: DataFrame, a_column, a_order=False, a_verbose_level=3):
-    rows = distinct(a_df, a_column, a_order).collect()
+    rows = distinct(a_df, a_column, a_order, a_verbose_level=a_verbose_level).collect()
     return [r[a_column] for r in rows]
 
 
@@ -777,8 +784,9 @@ def max_value(a_df: DataFrame, a_column: str):
 
 
 def collect_values(a_df: DataFrame, a_column, a_order=False, a_verbose_level=3):
-    rows = change(a_df, a_select=[a_column]).collect()
+    rows = change(a_df, a_select=[a_column], a_order_by=a_column if a_order else None, a_verbose_level=a_verbose_level).collect()
     return [r[a_column] for r in rows]
+
 
 def count(a_df: DataFrame, a_cache=False, a_verbose_level=3):
     if not isinstance(a_cache, bool):
@@ -790,7 +798,7 @@ def count(a_df: DataFrame, a_cache=False, a_verbose_level=3):
     return cnt
 
 
-def groupby_count(a_df: DataFrame, a_columns: ListOrStr, a_order_by=None, a_rc_desc=False, a_verbose_level=3) -> DataFrame:
+def groupby_count(a_df: DataFrame, a_columns: ListOrStr, a_distinct_column=None, a_order_by=None, a_rc_desc=False, a_verbose_level=3) -> DataFrame:
     if isinstance(a_columns, str):
         a_columns = [a_columns]
     table_name = temp_table(a_df)
@@ -803,13 +811,18 @@ def groupby_count(a_df: DataFrame, a_columns: ListOrStr, a_order_by=None, a_rc_d
             order_by = [order_by]
         if isinstance(order_by, list):
             order_by = {c: "asc" for c in order_by}
+
+    cnt_expression = "count(*)" if a_distinct_column is None else f"count(distinct {a_distinct_column})"
+    rc_col_name = "RC" if a_distinct_column is None else f"DC_{a_distinct_column}"
+
     if a_rc_desc:
         if order_by is None:
-            order_by = {"RC": "desc"}
+            order_by = {rc_col_name: "desc"}
         else:
-            order_by["RC"] = "desc"
+            order_by[rc_col_name] = "desc"
     order_query = " order by " + ", ".join(f"{c} {v}" for c, v in order_by.items()) if order_by else ""
-    query = f"select {cols}, count(*) as RC from {table_name} group by {cols}" + order_query
+
+    query = f"select {cols}, {cnt_expression} as {rc_col_name} from {table_name} group by {cols}" + order_query
     return sql(query, a_verbose_level=a_verbose_level)
 
 
@@ -837,8 +850,8 @@ def groupby(a_df: DataFrame, a_group_columns: ListOrStr, a_columns: dict, a_orde
         a_group_columns = [a_group_columns]
     if not isinstance(a_columns, dict):
         raise ValueError("a_coumns must be a dict of 'column': 'sum', 'column2': 'max', etc.")
-    if a_order_by is not None and (not isinstance(a_order_by, dict) and not isinstance(a_order_by, list)) :
-        raise ValueError("a_order_by must be a dictionary")
+    if a_order_by is not None and (not isinstance(a_order_by, dict) and not isinstance(a_order_by, list)) and not isinstance(a_order_by, str):
+        raise ValueError("a_order_by must be a dictionary, list or string")
     table_name = temp_table(a_df)
     group_cols = comma_columns(a_group_columns)
     agg_cols = []
@@ -862,6 +875,8 @@ def groupby(a_df: DataFrame, a_group_columns: ListOrStr, a_columns: dict, a_orde
         if isinstance(a_order_by, dict):
             order_query = " order by " + ", ".join(f"{c} {o}" for c, o in a_order_by.items())
         else:
+            if isinstance(a_order_by, str):
+                a_order_by = [a_order_by]
             order_query = " order by " + ", ".join(f"{c} asc" for c in a_order_by)
     query = f"select {group_cols}, {agg_cols} from {table_name} group by {group_cols}" + order_query
     return sql(query, a_verbose_level=a_verbose_level)
