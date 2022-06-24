@@ -1833,6 +1833,16 @@ def schema_to_str(a_schema):
     return "root\n |-- " + "\n |-- ".join(f"{f.name}: {str(f.dataType)[:-4].lower()} (nullable = {str(f.nullable).lower()})" for f in a_schema.fields)
 
 
+def schema_to_code(a_schema, indent=1):
+    if isinstance(a_schema, StructType):
+        spacer = "StructType([\n%s\n" + "    " * (indent - 1) + "])"
+        return (spacer % ",\n".join("    " * indent + schema_to_code(field, indent + 1) for field in a_schema))
+    elif isinstance(a_schema, StructField):
+        return "StructField(\"%s\", %s, %s)" % (a_schema.name, schema_to_code(a_schema.dataType, indent), str(a_schema.nullable))
+    else:
+        return str(a_schema) + "()"
+
+
 def rename_columns(a_df: DataFrame, a_columns_rename_map: dict, a_verbose_level=3):
     """Renames columns of a dataframe using the renaming map.
 
