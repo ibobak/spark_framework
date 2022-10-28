@@ -327,8 +327,8 @@ def load(a_souce_conn_info: dict, a_table,
         a_table_options = t.get("options", {})
         if a_table_options is not None and not isinstance(a_table_options, dict):
             raise ValueError("Table options must be either dict or None")
-    elif not isinstance(a_table, str):
-        raise ValueError("a_table must be either dict(name, format, header, schema) or string")
+    elif not isinstance(a_table, str) and not isinstance(a_table, list):
+        raise ValueError("a_table must be either dict(name, format, header, schema) or string or list")
 
     if a_table is None and a_query is None:
         raise ValueError("The a_table or a_query must be set")
@@ -474,7 +474,7 @@ def pg_copy(a_df: DataFrame, a_dest_table: str, a_overwrite=True, a_verbose_leve
     print_verbose(1, a_verbose_level, 'done pg_copy.')
 
 
-def get_fs_writer(a_df: DataFrame, a_format: str, a_header, a_overwrite, a_partition_by, a_verbose_level=3, **a_options):
+def get_fs_writer(a_df: DataFrame, a_format: str, a_header, a_overwrite, a_partition_by, a_verbose_level=3, a_compression=None, **a_options):
     """Constructs file system dataframe writer.
 
     :param a_df: the dataframe
@@ -512,6 +512,9 @@ def get_fs_writer(a_df: DataFrame, a_format: str, a_header, a_overwrite, a_parti
             res = res.partitionBy(*a_partition_by)
         else:
             res = res.partitionBy(a_partition_by)
+
+    if a_compression is not None:
+        res = res.option("compression", a_compression)
 
     if a_format in {C_CSV_GZ, C_JSON_GZ}:
         print_verbose(4, a_verbose_level, f"option codec={C_GZIP_CODEC}")
@@ -594,6 +597,7 @@ def save(a_df: DataFrame, a_dest_conn_info: dict, a_table,
     """
     # in the case if the table name is a dict - get the format, header and schema from there, and check
     # if they are NOT set in the regular parameters
+    a_compression = None
     if isinstance(a_table, dict):
         if a_format is not None or a_header is not None:
             raise ValueError("If you specify the a_table to be a dictionary of values, then you should NOT specify "
@@ -601,7 +605,8 @@ def save(a_df: DataFrame, a_dest_conn_info: dict, a_table,
         a_format = a_table.get("format", None)
         a_header = a_table.get("header", None)
         a_partition_by = a_table.get("partition_by", None)
-        a_table = a_table.get("name", None)
+        a_compression = a_table.get("compression", None)
+        a_table = a_table.get("name", None)  # must be the last line
     elif not isinstance(a_table, str):
         raise ValueError("a_table must be either dict(name, format, header) or string")
 
@@ -625,7 +630,8 @@ def save(a_df: DataFrame, a_dest_conn_info: dict, a_table,
     if dest_type == C_DFS or dest_type == C_LOCAL:
         path = join_path_generic(dest_url, a_table) if dest_type == C_DFS else join_path_os(dest_url, a_table)
         print_verbose(1, a_verbose_level, f"saving to {dest_type} path {path}, started at: {date_to_ymd_hms(dtn)}")
-        get_fs_writer(df, a_format, a_header, a_overwrite, a_partition_by, a_verbose_level=a_verbose_level, **dest_options).save(path)
+        get_fs_writer(df, a_format, a_header, a_overwrite, a_partition_by, a_verbose_level=a_verbose_level,
+                      a_compression=a_compression, **dest_options).save(path)
     elif dest_type == C_JDBC:
         # for PostgreSQL we will use its fast copy function
         if a_fast_write and dest_url.lower().startswith("jdbc:postgresql"):
