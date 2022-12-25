@@ -843,7 +843,7 @@ def groupby_sum(a_df: DataFrame, a_group_columns: ListOrStr, a_sum_columns: List
     order_query = f" order by {group_cols}" if a_order and group_cols else ""
     query = f"select "
     if group_cols:
-        query += " {group_cols}, "
+        query += f" {group_cols}, "
     query += f"{sum_cols} from {table_name} "
     if group_cols:
         query += f" group by {group_cols}"
