@@ -1530,7 +1530,7 @@ def calc_stat_local(a_pdf,
         if a_trunc_to_decimal_places >= 0:
             multiplier = 10 ** a_trunc_to_decimal_places
             for c2 in get_cols:
-                pdf_res[c2] = np.trunc(pdf_res[c2].values ** multiplier) / multiplier
+                pdf_res[c2] = np.trunc(pdf_res[c2].values * multiplier) / multiplier
 
         # rename columns - append the prefix
         pdf_res.columns = [p + c for c in pdf_res.columns]
