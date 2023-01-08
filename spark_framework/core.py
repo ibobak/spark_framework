@@ -1403,8 +1403,11 @@ def calc_stat_local(a_pdf,
                     a_group_columns,
                     a_return_uppercase=False,
                     a_reset_index=True,
-                    a_round_to_decimal_places=-1
+                    a_round_to_decimal_places=-1,
+                    a_trunc_to_decimal_places=-1
                     ):
+    if a_round_to_decimal_places != -1 and a_trunc_to_decimal_places != -1:
+        raise ValueError("yout should use either a_round_to_decimal_places or a_trunc_to_decimal_places, but not both")
     # region indicators of which statistics to calculate; they will go as closures to the stat_func()
     if isinstance(a_group_columns, str):
         a_group_columns = [a_group_columns]
@@ -1524,6 +1527,10 @@ def calc_stat_local(a_pdf,
         if a_round_to_decimal_places >= 0:
             for c2 in get_cols:
                 pdf_res[c2] = np.around(pdf_res[c2].values, a_round_to_decimal_places)
+        if a_trunc_to_decimal_places >= 0:
+            multiplier = 10 ** a_trunc_to_decimal_places
+            for c2 in get_cols:
+                pdf_res[c2] = np.trunc(pdf_res[c2].values ** multiplier) / multiplier
 
         # rename columns - append the prefix
         pdf_res.columns = [p + c for c in pdf_res.columns]
@@ -1544,7 +1551,7 @@ def statistics(a_df,
                 a_stats=None,
                 a_quantiles=None,
                 a_return_schema=False,
-                a_split_group_columns=None, a_return_uppercase=False, a_round_to_decimal_places=-1):
+                a_split_group_columns=None, a_return_uppercase=False, a_round_to_decimal_places=-1, a_trunc_to_decimal_places=-1):
     # region check parameters
     if a_stats is None and a_quantiles is None:
         raise ValueError("Please, specify either a_stats or a_quantiles")
@@ -1569,7 +1576,9 @@ def statistics(a_df,
 
     def stat_func2(a_pdf):
         return calc_stat_local(a_pdf, stats, quantiles, a_column_prefix_map, a_group_columns,
-                               a_return_uppercase=a_return_uppercase, a_reset_index=True, a_round_to_decimal_places=a_round_to_decimal_places)
+                               a_return_uppercase=a_return_uppercase, a_reset_index=True,
+                               a_round_to_decimal_places=a_round_to_decimal_places,
+                               a_trunc_to_decimal_places=a_trunc_to_decimal_places)
 
     schema = StructType(output_cols)
 
