@@ -1,6 +1,6 @@
 """Initialization of public functions of Spark Framework"""
 
-__version__ = "1.35"
+__version__ = "1.36"
 
 # initialization
 from spark_framework.core import init

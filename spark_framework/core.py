@@ -1939,7 +1939,7 @@ def numpy_to_spark_type(c):
         return DoubleType()
     elif np.issubdtype(c, np.datetime64):
         return TimestampType()
-    elif c == np.object:
+    elif c == object:
         return StringType()
     else:
         raise Exception(f"Unknown type {c}")
