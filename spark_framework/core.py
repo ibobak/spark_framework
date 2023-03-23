@@ -14,7 +14,7 @@ from pgcopy import CopyManager
 from pyspark.sql.dataframe import DataFrame
 from pyspark.sql.session import SparkSession
 from pyspark.sql.types import StringType, Row, StructField, StructType, TimestampType, ByteType, ShortType, \
-    IntegerType, LongType, FloatType, DoubleType
+    IntegerType, LongType, FloatType, DoubleType, BooleanType
 from pyspark.sql.functions import pandas_udf, PandasUDFType
 from pyspark.storagelevel import StorageLevel
 from pyspark.sql import Window
@@ -1939,6 +1939,8 @@ def numpy_to_spark_type(c):
         return DoubleType()
     elif np.issubdtype(c, np.datetime64):
         return TimestampType()
+    elif c == np.bool:
+        return BooleanType()
     elif c == object:
         return StringType()
     else:
