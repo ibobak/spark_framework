@@ -7,7 +7,7 @@ with open("requirements.txt") as f:
 
 setup(
     name="spark_framework",
-    version="1.37",
+    version="1.38",
     description="Alternative pythonic style API to work with Apache Spark",
     long_description="The project is a collection of useful functions "
                      "that allow to write PySpark code in a more convenient way",
