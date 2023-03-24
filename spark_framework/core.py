@@ -832,6 +832,14 @@ def groupby_count(a_df: DataFrame, a_columns: ListOrStr, a_distinct_column=None,
     return sql(query, a_verbose_level=a_verbose_level)
 
 
+def double_groupby_count(a_df, a_group_cols, a_count_col_name=None):
+    g_str = ", ".join(a_group_cols) if isinstance(a_group_cols, list) else a_group_cols
+    count_col_name = a_count_col_name if a_count_col_name else f"rows_for_{g_str.replace(', ', '_')}"
+
+    return sql(f"""with x as (select {g_str}, count(*) as {count_col_name} from [0] group by {g_str})
+select {count_col_name}, count(*) as RC from x group by {count_col_name} order by {count_col_name}""", a_df)
+
+
 def groupby_sum(a_df: DataFrame, a_group_columns: ListOrStr, a_sum_columns: ListOrStr, a_order=False, a_verbose_level=3) -> DataFrame:
     if isinstance(a_group_columns, str):
         a_group_columns = [a_group_columns]
