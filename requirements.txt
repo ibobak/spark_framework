@@ -1,3 +1,4 @@
+# sudo apt-get install libpq-dev
 numpy
 pandas
 scipy
