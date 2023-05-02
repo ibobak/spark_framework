@@ -1850,11 +1850,17 @@ def df_schema_to_str(a_df: DataFrame):
 
 
 def schema_to_str(a_schema):
-    """For df.schema (that will return StructType(list of IntegerType(), StringType()...)
-    we need to construct a schema string with the same format as printSchema()
     """
-    return "root\n |-- " + "\n |-- ".join(f"{f.name}: {str(f.dataType)[:-4].lower()} (nullable = {str(f.nullable).lower()})" for f in a_schema.fields)
+    The function constructs a schema string with the same format as printSchema()
+    """
+    return "root\n |-- " + "\n |-- ".join(f"{f.name}: {str(f.dataType)[:-6].lower()} (nullable = {str(f.nullable).lower()})" for f in a_schema.fields)
 
+
+def schema_to_str_linear(a_schema):
+    """
+    The function constructs a schema string of type "a int, b string, c timestamp"
+    """
+    return  ", ".join(f"{f.name} {str(f.dataType)[:-6].lower()}" for f in a_schema.fields)
 
 def schema_to_code(a_schema, indent=1):
     if isinstance(a_schema, StructType):
