@@ -14,7 +14,7 @@ from pgcopy import CopyManager
 from pyspark.sql.dataframe import DataFrame
 from pyspark.sql.session import SparkSession
 from pyspark.sql.types import StringType, Row, StructField, StructType, TimestampType, ByteType, ShortType, \
-    IntegerType, LongType, FloatType, DoubleType, BooleanType
+    IntegerType, LongType, FloatType, DoubleType, BooleanType, DateType
 from pyspark.sql.functions import pandas_udf, PandasUDFType
 from pyspark.storagelevel import StorageLevel
 from pyspark.sql import Window
@@ -1159,13 +1159,61 @@ def change(a_df: DataFrame, a_select=None, a_drop=None, a_replace=None, a_rename
     return result
 
 
-def join_clause(a_fields, a_left_prefix, a_right_prefix):
-    return " and ".join("{}.{}={}.{}".format(a_left_prefix, safe_col_name(c), a_right_prefix, safe_col_name(c)) for c in a_fields)
+def join_clause(a_fields, a_left_prefix, a_right_prefix, a_join_col_types=None, a_handle_null_columns=None):
+    if a_handle_null_columns is not None and a_join_col_types is None:
+        raise ValueError("If a_handle_null_columns is not None, please, pass a_join_col_types")
+    if a_join_col_types is not None:
+        if len(a_join_col_types) != len(a_fields):
+            raise ValueError("There is a problem with the length of a_fields and a_join_col_types")
+    if a_handle_null_columns is str:
+        a_handle_null_columns = [a_handle_null_columns]
+    
+    # default behavior: 
+    if a_handle_null_columns is None:
+        return " and ".join(f"{a_left_prefix}.{safe_col_name(c)}={a_right_prefix}.{safe_col_name(c)}" for c in a_fields)
+    
+    join_list = []
+    for c, dt in zip(a_fields, a_join_col_types):
+        if c not in a_handle_null_columns:
+            join_list.append(f"{a_left_prefix}.{safe_col_name(c)}={a_right_prefix}.{safe_col_name(c)}")
+        else:
+            if isinstance(dt, StringType):
+                null_clause = "'___NULL___'"
+            elif isinstance(dt, IntegerType):
+                null_clause = '-2147483648'
+            elif isinstance(dt, LongType):
+                null_clause = "-9223372036854775808"
+            elif isinstance(dt, TimestampType):
+                null_clause = "to_date('1970-00-00')"
+            elif isinstance(dt, DateType):
+                null_clause = "to_date('0001-01-01')"
+            elif isinstance(dt, FloatType):
+                null_clause = "1.17549435e-38"
+            elif isinstance(dt, DoubleType):
+                null_clause = "2.2250738585072014e-308"
+            else:
+                raise ValueError(f"Field type {dt} is not supported in join_clause")
+
+            join_list.append(f"coalesce({a_left_prefix}.{safe_col_name(c)}, {null_clause})=coalesce({a_right_prefix}.{safe_col_name(c)}, {null_clause})")
+    return " and ".join(join_list)
 
 
-def join(a_df1, a_df2, a_how="inner", a_join_cols=None, a_drop_cols1=None, a_drop_cols2=None,
-         a_where=None, a_cache=False, a_unpersist1=False, a_unpersist2=False, a_row_count=False,
-         a_old_count=None, a_return_count=False, a_temp_table=None, a_verbose_level=3):
+def join(a_df1, a_df2, 
+         a_how="inner", 
+         a_join_cols=None, 
+         a_handle_null_columns=None,
+         a_drop_cols1=None, 
+         a_drop_cols2=None,
+         a_where=None, 
+         a_cache=False, 
+         a_unpersist1=False, 
+         a_unpersist2=False, 
+         a_row_count=False,
+         a_old_count=None, 
+         a_return_count=False, 
+         a_temp_table=None, 
+         a_verbose_level=3
+    ):
     """Simplifies join between two dataframes.
 
     :param a_df1:  the first dataframe
@@ -1206,6 +1254,7 @@ def join(a_df1, a_df2, a_how="inner", a_join_cols=None, a_drop_cols1=None, a_dro
     cols2 = a_df2.columns if not a_drop_cols2 else [c for c in a_df2.columns if c not in a_drop_cols2]
 
     join_cols = a_join_cols if a_join_cols else list(set(cols1).intersection(cols2))
+    join_col_types = [get_schema_column_type(a_df1, c) for c in join_cols]
     s_except1 = f"- all except {a_drop_cols1}" if a_drop_cols1 else ""
     s_except2 = f"- all except df1 and except {a_drop_cols2}" if a_drop_cols2 else ""
 
@@ -1247,7 +1296,7 @@ def join(a_df1, a_df2, a_how="inner", a_join_cols=None, a_drop_cols1=None, a_dro
                table_name1,
                a_how,
                table_name2,
-               join_clause(join_cols, 'df1', 'df2'))
+               join_clause(join_cols, 'df1', 'df2', a_join_col_types=join_col_types, a_handle_null_columns=a_handle_null_columns))
     if a_where:
         query = "select * from (\n" + query + "\n) as x\n where \n" + a_where
     print_verbose(3, a_verbose_level, query)
@@ -1305,7 +1354,7 @@ def union_all(a_df_list: list, a_columns: list=None, a_verbose_level=3):
     return union(a_df_list, a_columns, a_verbose_level, a_type="all")
 
 
-def moving_average(a_df, a_group_col, a_value_col, a_sort_col, a_moving_avg_col, a_window, a_min_periods=1, a_return_all_columns=True):
+def moving_average(a_df: DataFrame, a_group_col, a_value_col, a_sort_col, a_moving_avg_col, a_window, a_min_periods=1, a_return_all_columns=True):
     # DO NOT REMOVE select(*a_df.columns):  this is related to inability to add column dynamically to it
     schema = a_df.select(*a_df.columns).schema if a_return_all_columns else a_df.select(a_group_col, a_sort_col, a_value_col).schema
     schema = (schema.add(StructField(a_moving_avg_col, DoubleType())))
@@ -1610,6 +1659,18 @@ def get_schema_columns(a_df, a_columns=None):
             raise ValueError(f"Column {gc} is not found in the schema")
         result.append(schema_dict[gc])
     return result
+
+
+def get_schema_column(a_df, a_column):
+    for c in a_df.schema:
+        if c.name == a_column:
+            return c
+    raise ValueError(f"Column {a_column} is not found in the dataframe")
+
+    
+def get_schema_column_type(a_df, a_column):
+    return get_schema_column(a_df, a_column).dataType
+
 
 def get_schema_columns_string(a_df, a_columns=None):
     if a_columns is None:
