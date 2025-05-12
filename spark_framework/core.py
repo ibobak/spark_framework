@@ -166,7 +166,7 @@ def display_pdf(a_object):
     if "DATABRICKS_RUNTIME_VERSION" in os.environ:
         display(a_object)
     elif isnotebook():
-        from IPython.core.display import display as ipython_display
+        from IPython.display import display as ipython_display
 
         ipython_display(a_object)
     else:
